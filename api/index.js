@@ -8,6 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const STREAM_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 const BASE_URL = 'https://www.ver-hentai.online';
 
 // Mapeo de secciones para los catálogos del sitio web
@@ -186,37 +187,66 @@ function isVideoHost(url) {
 
 // Normalizar URLs de reproductores embebidos
 function normalizeEmbedUrl(url) {
-  let normalized = url.trim();
+  let normalized = (url || '').trim();
   if (normalized.startsWith('//')) {
     normalized = 'https:' + normalized;
   }
 
+  // DoodStream
   if (normalized.includes('playmogo.com/d/')) {
     normalized = normalized.replace('playmogo.com/d/', 'do7go.com/e/');
+  } else if (normalized.includes('playmogo.com/e/')) {
+    normalized = normalized.replace('playmogo.com/e/', 'do7go.com/e/');
   } else if (normalized.includes('/d/') && (normalized.includes('dood') || normalized.includes('do7go'))) {
     normalized = normalized.replace('/d/', '/e/');
   }
 
+  // LuluStream
   if (normalized.includes('luluvido.com/d/')) {
-    normalized = normalized.replace('/d/', '/e/');
+    normalized = normalized.replace('luluvido.com/d/', 'luluvido.com/e/');
   } else if (normalized.includes('lulustream.com/d/')) {
-    normalized = normalized.replace('/d/', '/e/');
+    normalized = normalized.replace('lulustream.com/d/', 'lulustream.com/e/');
   }
 
+  // YourUpload
   if (normalized.includes('yourupload.com/watch/')) {
-    normalized = normalized.replace('/watch/', '/embed/');
+    normalized = normalized.replace('yourupload.com/watch/', 'yourupload.com/embed/');
   }
 
+  // VOE
   if (normalized.includes('voe.sx/') && !normalized.includes('voe.sx/e/')) {
     normalized = normalized.replace('voe.sx/', 'voe.sx/e/');
   }
 
+  // SaveFiles
   if (normalized.includes('savefiles.com/') && !normalized.includes('/e/')) {
     normalized = normalized.replace('savefiles.com/', 'savefiles.com/e/');
   }
 
+  // Byse
   if (normalized.includes('byseraguci.com/d/')) {
     normalized = normalized.replace('/d/', '/e/');
+  }
+
+  // Streamtape
+  if (normalized.includes('streamtape.com/v/')) {
+    normalized = normalized.replace('streamtape.com/v/', 'streamtape.com/e/');
+  }
+
+  // Mp4Upload
+  if (normalized.includes('mp4upload.com/') && !normalized.includes('/embed-') && !normalized.includes('/embed/')) {
+    const codeMatch = normalized.match(/mp4upload\.com\/([a-zA-Z0-9]+)/);
+    if (codeMatch) {
+      normalized = `https://www.mp4upload.com/embed-${codeMatch[1]}.html`;
+    }
+  }
+
+  // Uqload
+  if (normalized.includes('uqload.') && !normalized.includes('/embed-') && !normalized.includes('/embed/')) {
+    const codeMatch = normalized.match(/uqload\.[a-z]+\/([a-zA-Z0-9]+)/);
+    if (codeMatch) {
+      normalized = `https://uqload.com/embed-${codeMatch[1]}.html`;
+    }
   }
 
   return normalized;
@@ -650,14 +680,18 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
       seenUrls.add(url);
 
       const requestHeaders = {
-        Referer: `${BASE_URL}/`,
+        'User-Agent': STREAM_USER_AGENT,
+        'Referer': `${BASE_URL}/`,
         ...customHeaders
       };
 
       streams.push({
+        name: 'VerHentai',
         title: title,
         url: url,
+        isFree: true,
         behaviorHints: {
+          notSupported: false,
           proxyHeaders: {
             request: requestHeaders
           }
@@ -665,13 +699,13 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
       });
     }
 
-    // 1. Extraer reproductores embebidos / iframes
+    // 1. Extraer reproductores embebidos / iframes de la página
     $('iframe').each((_, el) => {
       const src = $(el).attr('src');
       if (src && !isAdOrSpam(src) && (isVideoHost(src) || src.includes('/e/'))) {
         const normUrl = normalizeEmbedUrl(src);
         const serverName = identifyServer(normUrl);
-        addStream(`${serverName} (Principal HD)`, normUrl);
+        addStream(`${serverName} (Reproductor Principal HD)`, normUrl);
       }
     });
 
@@ -685,8 +719,9 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
           if (Array.isArray(selectedData)) {
             for (const item of selectedData) {
               if (item && item.embed_code && !isAdOrSpam(item.embed_code)) {
-                const sName = item?.server?.[0]?.name || identifyServer(item.embed_code);
-                addStream(`${sName} (HD)`, normalizeEmbedUrl(item.embed_code));
+                const normUrl = normalizeEmbedUrl(item.embed_code);
+                const sName = item?.server?.[0]?.name || identifyServer(normUrl);
+                addStream(`${sName} (Reproductor HD)`, normUrl);
               }
             }
           }
@@ -710,35 +745,10 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
       }
     });
 
-    // Procesar servidores encontrados y aplicar lógica de desencapsulado
+    // Procesar servidores encontrados y normalizar a sus formatos embed/iframe directos
     for (const item of candidateLinks) {
       const normEmbed = normalizeEmbedUrl(item.url);
-
-      // Desencapsulado LuluStream (.m3u8 maestro directo)
-      if (item.serverName === 'LuluStream') {
-        const directM3u8 = await extractLuluStream(item.url);
-        if (directM3u8) {
-          addStream('LuluStream (Direct HLS 1080p)', directM3u8, {
-            Referer: 'https://luluvido.com/',
-            Origin: 'https://luluvido.com',
-            'User-Agent': USER_AGENT
-          });
-        }
-      }
-
-      // Desencapsulado YourUpload (.mp4 directo)
-      if (item.serverName === 'YourUpload') {
-        const directMp4 = await extractYourUpload(item.url);
-        if (directMp4) {
-          addStream('YourUpload (Direct MP4 HD)', directMp4, {
-            Referer: 'https://www.yourupload.com/',
-            'User-Agent': USER_AGENT
-          });
-        }
-      }
-
-      // Agregar versión embebida del servidor
-      addStream(`${item.serverName} (HD)`, normEmbed);
+      addStream(`${item.serverName} (Reproductor HD)`, normEmbed);
     }
 
     console.log(`[VerHentai] Streams encontrados (${streams.length}) para ${slug}`);
