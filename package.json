@@ -1,0 +1,28 @@
+{
+  "name": "verhentai-nuvio-addon",
+  "version": "1.0.0",
+  "description": "Addon serverless para Nuvio y Stremio con web scraping en tiempo real de VerHentai",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js",
+    "dev": "node api/index.js"
+  },
+  "dependencies": {
+    "@vercel/node": "^3.2.29",
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "keywords": [
+    "nuvio",
+    "stremio",
+    "addon",
+    "verhentai",
+    "scraper",
+    "vercel",
+    "serverless"
+  ],
+  "author": "",
+  "license": "MIT"
+}
