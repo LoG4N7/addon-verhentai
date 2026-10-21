@@ -1,18 +1,26 @@
 # VerHentai Addon para Nuvio & Stremio
 
-Addon serverless de alto rendimiento para **Nuvio** y **Stremio**, diseñado para ejecutarse en **Vercel** y realizar web scraping en tiempo real sobre el sitio web [https://www.ver-hentai.online](https://www.ver-hentai.online).
+Addon serverless completo de alto rendimiento para **Nuvio** y **Stremio**, diseñado para ejecutarse en **Vercel** y realizar web scraping en tiempo real sobre el sitio web [https://www.ver-hentai.online](https://www.ver-hentai.online).
 
 ---
 
-## 🚀 Características
+## 🚀 Arquitectura y Características
 
-- **Web Scraping en Tiempo Real**: Extrae automáticamente los servidores y reproductores embebidos (`iframes`) de cada episodio.
-- **Soporte para Laravel Livewire**: Lee los estados reactivos iniciales (`wire:snapshot`) para obtener los servidores seleccionados por defecto.
-- **Desencapsulado Directo de Streams (.m3u8)**: Desempaqueta scripts ofuscados (Dean Edwards `p,a,c,k,e,d`) en servidores como **LuluStream** para obtener el enlace directo en calidad 1080p.
-- **Compatibilidad con Servidores Principales**: Extrae y normaliza reproductores de **DoodStream**, **LuluStream**, **VOE**, **SaveFiles**, **Usersdrive**, **Byse**, **Upfiles**, etc.
-- **Configuración de `proxyHeaders`**: Incluye cabeceras `Referer` y `Origin` necesarias para evitar restricciones de reproducción y hotlinking.
-- **Tolerancia a Fallos**: Bloques `try/catch` robustos que garantizan que el servidor siempre devuelva `{ "streams": [] }` si ocurre un error, evitando caídas en entornos serverless.
-- **Arquitectura Serverless para Vercel**: 100% compatible con despliegues automáticos desde GitHub.
+- **Catálogos por Secciones**:
+  - `verhentai-latest-episodes`: Episodios Recientes (con soporte para búsqueda).
+  - `verhentai-recommended`: Hentai Recomendados.
+  - `verhentai-top5`: Top 5 Hentai.
+  - `verhentai-repaired`: Últimos Reparados.
+  - `verhentai-recent-hentai`: Hentai Recientes.
+  - `verhentai-upcoming`: Próximos Hentai.
+  - `verhentai-popular`: Lo Más Popular.
+- **Motor de Búsqueda Integrado**: Permite buscar cualquier título directamente desde la barra de búsqueda de Nuvio o Stremio.
+- **Metadatos Detallados (`/meta`)**: Extrae portada, sinopsis y genera la lista completa de episodios ordenados cronológicamente por serie (o episodio único para OVAs/películas).
+- **Web Scraping de Streams en Tiempo Real (`/stream`)**: Extrae servidores y reproductores embebidos (`iframes`), datos reactivos de **Laravel Livewire** (`wire:snapshot`) y enlaces de servidores.
+- **Desencapsulado Directo de Streams (.m3u8 y .mp4)**: Desempaqueta scripts ofuscados (Dean Edwards `p,a,c,k,e,d`) en servidores como **LuluStream** (extrayendo master `.m3u8` en 1080p) y enlaces directos de **YourUpload** (`.mp4`).
+- **Filtro Anti-Publicidad**: Bloquea URLs y scripts de redes de anuncios y rastreadores invasivos.
+- **Cabeceras de Reproducción (`proxyHeaders`)**: Configura automáticamente cabeceras como `Referer` y `Origin` para garantizar la reproducción sin bloqueos por hotlinking.
+- **Tolerancia a Fallos Serverless**: Respuestas seguras con `{ "metas": [] }`, `{ "meta": {} }` y `{ "streams": [] }` ante cualquier eventualidad.
 
 ---
 
@@ -21,10 +29,11 @@ Addon serverless de alto rendimiento para **Nuvio** y **Stremio**, diseñado par
 ```text
 addon-verhentai/
 ├── api/
-│   └── index.js         # Punto de entrada de la aplicación Express y lógica del scraper
+│   └── index.js         # Servidor Express, endpoints de Catálogo, Búsqueda, Metadatos y Streams
 ├── .gitignore           # Archivos y carpetas excluidas de Git
+├── manifest.json        # Manifiesto oficial estático del addon
 ├── package.json         # Dependencias y scripts del proyecto
-├── vercel.json          # Configuración serverless de rutas para Vercel
+├── vercel.json          # Configuración de rutas serverless para Vercel
 └── README.md            # Documentación y guía de despliegue
 ```
 
@@ -33,18 +42,12 @@ addon-verhentai/
 ## 🛠️ 1. Probar el Servidor Localmente
 
 ### Paso 1: Instalar Dependencias
-Abre una terminal en la carpeta del proyecto y ejecuta:
-
 ```bash
 npm install
 ```
-
-> **Nota para Windows (PowerShell):** Si tienes restricciones de ejecución de scripts, ejecuta `npm.cmd install`.
+*(En Windows PowerShell, si la política de scripts está restringida, ejecuta `npm.cmd install`)*
 
 ### Paso 2: Iniciar el Servidor
-Puedes iniciar el servidor con cualquiera de los siguientes comandos:
-
-**Con Node.js directamente:**
 ```bash
 node api/index.js
 ```
@@ -53,107 +56,73 @@ o
 npm start
 ```
 
-**Con la CLI de Vercel (si tienes instalado `vercel` globalmente):**
-```bash
-vercel dev
-```
+### Paso 3: Endpoints de Prueba
 
-### Paso 3: Probar los Endpoints
-
-Una vez iniciado el servidor (por defecto en `http://localhost:7000`):
+Una vez iniciado en `http://localhost:7000`:
 
 1. **Página de bienvenida:**
-   Abre en tu navegador: [http://localhost:7000/](http://localhost:7000/)
+   [http://localhost:7000/](http://localhost:7000/)
 
-2. **Manifiesto del Addon:**
+2. **Manifiesto:**
    [http://localhost:7000/manifest.json](http://localhost:7000/manifest.json)
-   ```json
-   {
-     "id": "com.verhentai.addon",
-     "name": "VerHentai Addon",
-     "version": "1.0.0",
-     "description": "Addon para Nuvio y Stremio con streams en tiempo real de Ver-Hentai.online",
-     "resources": ["stream"],
-     "types": ["anime"],
-     "idPrefixes": ["verhentai-"],
-     "catalogs": []
-   }
-   ```
 
-3. **Prueba de Streams de un Episodio:**
+3. **Catálogo (Episodios Recientes):**
+   [http://localhost:7000/catalog/anime/verhentai-latest-episodes.json](http://localhost:7000/catalog/anime/verhentai-latest-episodes.json)
+
+4. **Búsqueda en Tiempo Real:**
+   [http://localhost:7000/catalog/anime/verhentai-latest-episodes/search=kanojo.json](http://localhost:7000/catalog/anime/verhentai-latest-episodes/search=kanojo.json)
+
+5. **Metadatos de una Serie:**
+   [http://localhost:7000/meta/anime/verhentai-shinseki-no-ko-to-o-tomari-dakara.json](http://localhost:7000/meta/anime/verhentai-shinseki-no-ko-to-o-tomari-dakara.json)
+
+6. **Streams de un Episodio:**
    [http://localhost:7000/stream/anime/verhentai-kanojo-no-tomodachi-3.json](http://localhost:7000/stream/anime/verhentai-kanojo-no-tomodachi-3.json)
 
 ---
 
 ## 🐙 2. Comandos para Subir el Proyecto a GitHub
 
-Sigue estos pasos en tu terminal para publicar el repositorio en GitHub:
-
-1. **Crea un nuevo repositorio en GitHub:**
-   - Ve a [https://github.com/new](https://github.com/new).
-   - Nómbralo, por ejemplo: `addon-verhentai`.
-   - Selecciona **Public** o **Private** según tu preferencia (no marques "Initialize with README", ya que lo creamos aquí).
-   - Haz clic en **Create repository**.
-
-2. **Ejecuta los siguientes comandos en tu terminal local:**
-
 ```bash
-# 1. Inicializar el repositorio Git local
+# 1. Inicializar el repositorio Git (si no está inicializado)
 git init
 
-# 2. Agregar todos los archivos al seguimiento
+# 2. Agregar todos los archivos
 git add .
 
-# 3. Crear el primer commit
-git commit -m "feat: Addon serverless de VerHentai para Nuvio y Stremio"
+# 3. Crear el commit
+git commit -m "feat: Soporte completo para catálogos, búsqueda, metadatos y streams"
 
-# 4. Asegurarse de que la rama principal sea 'main'
+# 4. Asegurarse de estar en la rama main
 git branch -M main
 
-# 5. Vincular con tu repositorio de GitHub (reemplaza TU_USUARIO y TU_REPO)
+# 5. Conectar tu repositorio remoto (reemplaza con tu URL de GitHub)
 git remote add origin https://github.com/TU_USUARIO/addon-verhentai.git
 
-# 6. Subir el código a GitHub
+# 6. Subir los cambios
 git push -u origin main
 ```
 
 ---
 
-## ⚡ 3. Despliegue Serverless en Vercel
+## ⚡ 3. Despliegue en Vercel
 
-Una vez que tu repositorio esté en GitHub, el despliegue en Vercel toma menos de 2 minutos:
-
-1. Inicia sesión en [Vercel](https://vercel.com/) con tu cuenta de GitHub.
-2. En el panel principal (Dashboard), haz clic en **Add New...** > **Project**.
-3. En la lista de repositorios, localiza `addon-verhentai` y haz clic en **Import**.
-4. En la configuración del proyecto:
-   - **Framework Preset**: Selecciona `Other` (o déjalo en automático, Vercel detectará la configuración de Node.js).
-   - **Root Directory**: `./` (la raíz del repositorio).
-   - No necesitas configurar variables de entorno adicionales a menos que desees personalizar el User-Agent.
-5. Haz clic en el botón **Deploy**.
-6. En pocos segundos, Vercel compilará la función serverless y te otorgará un dominio público, por ejemplo:
+1. Ve a [Vercel](https://vercel.com/) e inicia sesión con GitHub.
+2. Haz clic en **Add New...** > **Project** e importa `addon-verhentai`.
+3. Mantén la configuración por defecto y haz clic en **Deploy**.
+4. Tu URL pública será:
    ```text
-   https://addon-verhentai.vercel.app
+   https://tu-proyecto.vercel.app/manifest.json
    ```
 
 ---
 
-## 📱 4. Cómo Instalar el Addon en Nuvio o Stremio
+## 📱 4. Instalación en Nuvio o Stremio
 
-1. Copia la URL de tu manifiesto generado por Vercel:
-   ```text
-   https://tu-proyecto.vercel.app/manifest.json
-   ```
-2. **En Stremio:**
-   - Ve a la sección de **Addons** (icono de rompecabezas).
-   - En el campo de búsqueda o en "Community Addons", pega la URL de tu manifiesto (`https://tu-proyecto.vercel.app/manifest.json`).
-   - Haz clic en **Install** (Instalar).
-3. **En Nuvio:**
-   - Ve a **Ajustes** / **Addons**.
-   - Añade el enlace del manifiesto y confirma la instalación.
+- **En Stremio:** Pega la URL `https://tu-proyecto.vercel.app/manifest.json` en la barra de búsqueda de Addons y pulsa **Install**.
+- **En Nuvio:** Añade el enlace del manifiesto en la sección de Addons en Ajustes.
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto está bajo la Licencia MIT.
+MIT

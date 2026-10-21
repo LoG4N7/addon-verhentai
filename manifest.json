@@ -1,0 +1,60 @@
+{
+  "id": "com.verhentai.addon",
+  "name": "VerHentai Addon",
+  "version": "1.0.0",
+  "description": "Addon oficial de Ver-Hentai.online para Nuvio y Stremio con Catálogos, Búsqueda, Metadatos y Streams",
+  "resources": [
+    "catalog",
+    "meta",
+    "stream"
+  ],
+  "types": [
+    "anime"
+  ],
+  "idPrefixes": [
+    "verhentai-"
+  ],
+  "catalogs": [
+    {
+      "type": "anime",
+      "id": "verhentai-latest-episodes",
+      "name": "VerHentai - Episodios Recientes",
+      "extra": [
+        {
+          "name": "search",
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "type": "anime",
+      "id": "verhentai-recommended",
+      "name": "VerHentai - Hentai Recomendados"
+    },
+    {
+      "type": "anime",
+      "id": "verhentai-top5",
+      "name": "VerHentai - Top 5 Hentai"
+    },
+    {
+      "type": "anime",
+      "id": "verhentai-repaired",
+      "name": "VerHentai - Últimos Reparados"
+    },
+    {
+      "type": "anime",
+      "id": "verhentai-recent-hentai",
+      "name": "VerHentai - Hentai Recientes"
+    },
+    {
+      "type": "anime",
+      "id": "verhentai-upcoming",
+      "name": "VerHentai - Próximos Hentai"
+    },
+    {
+      "type": "anime",
+      "id": "verhentai-popular",
+      "name": "VerHentai - Lo Más Popular"
+    }
+  ]
+}
