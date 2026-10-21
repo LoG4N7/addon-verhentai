@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const STREAM_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+const STREAM_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const BASE_URL = 'https://www.ver-hentai.online';
 
 // Mapeo de secciones para los catálogos del sitio web
@@ -31,75 +31,6 @@ function cleanTitle(rawTitle) {
     .replace(/\s*\|\s*VerHentai/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-// Desempaquetador Dean Edwards p,a,c,k,e,d para scripts de reproductores
-function unpackJs(p, a, c, k) {
-  while (c--) {
-    if (k[c]) {
-      p = p.replace(new RegExp('\\b' + c.toString(a) + '\\b', 'g'), k[c]);
-    }
-  }
-  return p;
-}
-
-// Extractor para LuluStream / Luluvido (desencapsula stream .m3u8 directo)
-async function extractLuluStream(url) {
-  try {
-    const embedUrl = url.replace('/d/', '/e/');
-    const response = await axios.get(embedUrl, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Referer': BASE_URL
-      },
-      timeout: 6000
-    });
-
-    const html = response.data;
-    const packedMatch = html.match(/eval\(function\(p,a,c,k,e,d\)[\s\S]*?\.split\('\|'\)\)\)/);
-    if (packedMatch) {
-      const code = packedMatch[0];
-      const paramsMatch = code.match(/}\('([\s\S]*?)',(\d+),(\d+),'([\s\S]*?)'\.split\('\|'\)/);
-      if (paramsMatch) {
-        const [, p, aStr, cStr, kStr] = paramsMatch;
-        const a = parseInt(aStr, 10);
-        const c = parseInt(cStr, 10);
-        const k = kStr.split('|');
-        const unpacked = unpackJs(p, a, c, k);
-        const m3u8Match = unpacked.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/i);
-        if (m3u8Match) {
-          return m3u8Match[0];
-        }
-      }
-    }
-  } catch (err) {
-    // Si falla la extracción directa, se continúa con la versión embebida
-  }
-  return null;
-}
-
-// Extractor para YourUpload (desencapsula video directo .mp4)
-async function extractYourUpload(url) {
-  try {
-    const embedUrl = url.replace('/watch/', '/embed/');
-    const response = await axios.get(embedUrl, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Referer': 'https://www.yourupload.com/'
-      },
-      timeout: 6000
-    });
-    const html = response.data;
-    const fileMatch = html.match(/file:\s*["'](https?:\/\/[^"'\s]+\.mp4[^"'\s]*)["']/i) ||
-                      html.match(/<source\s+[^>]*src=["'](https?:\/\/[^"'\s]+\.mp4[^"'\s]*)["']/i) ||
-                      html.match(/<meta\s+property=["']og:video["']\s+content=["'](https?:\/\/[^"'\s]+\.mp4[^"'\s]*)["']/i);
-    if (fileMatch) {
-      return fileMatch[1];
-    }
-  } catch (err) {
-    // Fallback silencioso
-  }
-  return null;
 }
 
 // Filtro de publicidad y dominios no deseados
@@ -636,6 +567,8 @@ app.get(['/meta/anime/:id.json', '/meta/anime/:id'], async (req, res) => {
 // 4. Endpoint de Streams: /stream/anime/:id.json
 app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'max-age=1800, public');
 
   try {
@@ -676,40 +609,46 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
     const seenUrls = new Set();
 
     function addStream(title, url, customHeaders = {}) {
-      if (!url || seenUrls.has(url) || isAdOrSpam(url)) return;
-      seenUrls.add(url);
+      if (!url || typeof url !== 'string') return;
+      const cleanUrl = url.trim();
+      if (!cleanUrl || seenUrls.has(cleanUrl) || isAdOrSpam(cleanUrl)) return;
+      seenUrls.add(cleanUrl);
 
       const requestHeaders = {
         'User-Agent': STREAM_USER_AGENT,
         'Referer': `${BASE_URL}/`,
+        'Origin': BASE_URL,
         ...customHeaders
       };
 
-      streams.push({
-        name: 'VerHentai',
-        title: title,
-        url: url,
-        isFree: true,
+      const streamItem = {
+        title: String(title).trim(),
+        url: cleanUrl,
         behaviorHints: {
           notSupported: false,
           proxyHeaders: {
             request: requestHeaders
           }
         }
-      });
+      };
+
+      streams.push(streamItem);
     }
 
-    // 1. Extraer reproductores embebidos / iframes de la página
+    // 1. Extraer reproductor principal embebido (iframe principal del videoPlayer)
     $('iframe').each((_, el) => {
       const src = $(el).attr('src');
       if (src && !isAdOrSpam(src) && (isVideoHost(src) || src.includes('/e/'))) {
         const normUrl = normalizeEmbedUrl(src);
         const serverName = identifyServer(normUrl);
-        addStream(`${serverName} (Reproductor Principal HD)`, normUrl);
+        const primaryTitle = (serverName && serverName !== 'Reproductor Online')
+          ? `${serverName} - Servidor Principal (Web)`
+          : 'Servidor Principal (Web)';
+        addStream(primaryTitle, normUrl);
       }
     });
 
-    // 2. Extraer datos del snapshot reactivo de Livewire
+    // 2. Extraer servidor del snapshot reactivo de Livewire (selectedServerData)
     $('[wire\\:snapshot]').each((_, el) => {
       try {
         const snapshotRaw = $(el).attr('wire:snapshot');
@@ -721,7 +660,7 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
               if (item && item.embed_code && !isAdOrSpam(item.embed_code)) {
                 const normUrl = normalizeEmbedUrl(item.embed_code);
                 const sName = item?.server?.[0]?.name || identifyServer(normUrl);
-                addStream(`${sName} (Reproductor HD)`, normUrl);
+                addStream(`${sName} (HD)`, normUrl);
               }
             }
           }
@@ -731,7 +670,7 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
       }
     });
 
-    // 3. Extraer servidores de la sección de descargas y opciones
+    // 3. Extraer servidores de la sección de opciones y descargas (LuluStream, VOE, SaveFiles, Byse, etc.)
     const candidateLinks = [];
     $('a[href]').each((_, el) => {
       const href = $(el).attr('href');
@@ -745,18 +684,18 @@ app.get(['/stream/anime/:id.json', '/stream/anime/:id'], async (req, res) => {
       }
     });
 
-    // Procesar servidores encontrados y normalizar a sus formatos embed/iframe directos
+    // Normalizar cada servidor a su iframe/embed oficial seguro para evitar bloqueos de IP
     for (const item of candidateLinks) {
       const normEmbed = normalizeEmbedUrl(item.url);
-      addStream(`${item.serverName} (Reproductor HD)`, normEmbed);
+      addStream(`${item.serverName} (HD)`, normEmbed);
     }
 
     console.log(`[VerHentai] Streams encontrados (${streams.length}) para ${slug}`);
-    return res.json({ streams });
+    return res.status(200).json({ streams });
 
   } catch (error) {
     console.error(`[VerHentai] Error en /stream: ${error.message}`);
-    return res.json({ streams: [] });
+    return res.status(200).json({ streams: [] });
   }
 });
 
